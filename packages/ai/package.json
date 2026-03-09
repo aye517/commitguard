@@ -8,6 +8,7 @@
     "clean": "rimraf dist"
   },
   "dependencies": {
+    "@commitguard/config": "workspace:*",
     "@commitguard/core": "workspace:*"
   },
   "devDependencies": {

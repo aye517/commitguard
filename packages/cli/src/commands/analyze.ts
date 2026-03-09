@@ -1,10 +1,11 @@
 import { analyzeCommit } from "@commitguard/core";
 
-export async function analyze(options: { path?: string }): Promise<void> {
+export async function analyze(options: { path?: string; commit?: string }): Promise<void> {
   const repoPath = options.path;
+  const commit = options.commit;
 
   try {
-    const result = await analyzeCommit(repoPath);
+    const result = await analyzeCommit(repoPath, { commit });
 
     console.log("\n📋 CommitGuard Analysis\n");
     console.log("Changed files:", result.changedFiles.length);
@@ -23,7 +24,8 @@ export async function analyze(options: { path?: string }): Promise<void> {
     });
 
     if (result.commitMessage) {
-      console.log("\nLast commit message:", result.commitMessage.slice(0, 80) + (result.commitMessage.length > 80 ? "..." : ""));
+      const label = commit ? `Commit ${commit} message` : "Last commit message";
+      console.log(`\n${label}:`, result.commitMessage.slice(0, 80) + (result.commitMessage.length > 80 ? "..." : ""));
     }
 
     console.log("");

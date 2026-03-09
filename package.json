@@ -8,14 +8,18 @@
     "dev": "turbo run dev",
     "lint": "turbo run lint",
     "clean": "turbo run clean",
-    "analyze": "commitguard analyze"
+    "analyze": "commitguard analyze",
+    "generate": "commitguard generate",
+    "generate:run": "commitguard generate --run",
+    "test": "vitest run"
   },
   "dependencies": {
     "@commitguard/cli": "workspace:*"
   },
   "devDependencies": {
     "turbo": "^2.3.0",
-    "typescript": "^5.6.0"
+    "typescript": "^5.6.0",
+    "vitest": "^2.0.0"
   },
   "engines": {
     "node": ">=18"

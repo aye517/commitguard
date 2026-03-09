@@ -32,10 +32,41 @@ export async function getDiff(repoPath?: string): Promise<DiffResult[]> {
   }
 }
 
+/**
+ * Get diff for a specific commit (what changed in that commit).
+ * @param commitHash - e.g. "HEAD", "abc123", "HEAD~1"
+ */
+export async function getDiffForCommit(
+  commitHash: string,
+  repoPath?: string
+): Promise<DiffResult[]> {
+  try {
+    const git = await getGit(repoPath);
+    const diff = await git.show([commitHash, "--no-color", "--format="]);
+    return parseDiffOutput(diff);
+  } catch {
+    return [];
+  }
+}
+
 export async function getLastCommitMessage(repoPath?: string): Promise<string> {
   try {
     const git = await getGit(repoPath);
     const log = await git.log({ maxCount: 1 });
+    return log.latest?.message ?? "";
+  } catch {
+    return "";
+  }
+}
+
+/** Get commit message for a specific commit */
+export async function getCommitMessage(
+  commitHash: string,
+  repoPath?: string
+): Promise<string> {
+  try {
+    const git = await getGit(repoPath);
+    const log = await git.log({ from: commitHash, maxCount: 1 });
     return log.latest?.message ?? "";
   } catch {
     return "";

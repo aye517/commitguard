@@ -1,6 +1,6 @@
 import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
-import { getDiff, type DiffResult } from "@commitguard/git";
+import { getDiff, getDiffForCommit, getCommitMessage, getLastCommitMessage, type DiffResult } from "@commitguard/git";
 import { loadConfig } from "@commitguard/config";
 import { parseFile, findFunctions, type FunctionInfo } from "./ast.js";
 
@@ -20,15 +20,24 @@ export interface AnalysisResult {
   changedFunctions: ChangedFunction[];
   risks: RiskResult[];
   commitMessage?: string;
+  commitHash?: string;
 }
 
-export async function findChangedFunctions(repoPath?: string): Promise<ChangedFunction[]> {
+export interface AnalyzeOptions {
+  /** Analyze specific commit (e.g. "HEAD", "abc123", "HEAD~1"). If omitted, uses staged changes. */
+  commit?: string;
+}
+
+export async function findChangedFunctions(
+  repoPath?: string,
+  diffs?: DiffResult[]
+): Promise<ChangedFunction[]> {
   const config = loadConfig({ repoPath });
-  const diffs = await getDiff(repoPath);
+  const diffList = diffs ?? (await getDiff(repoPath));
   const changedFunctions: ChangedFunction[] = [];
   const extensions = config.risk?.extensions ?? [".ts", ".tsx", ".js", ".jsx"];
 
-  for (const diff of diffs) {
+  for (const diff of diffList) {
     const ext = diff.file.slice(diff.file.lastIndexOf("."));
     if (!extensions.includes(ext)) continue;
 
@@ -81,13 +90,20 @@ export function detectRisk(
   return risks;
 }
 
-export async function analyzeCommit(repoPath?: string): Promise<AnalysisResult> {
-  const diffs = await getDiff(repoPath);
+export async function analyzeCommit(
+  repoPath?: string,
+  options?: AnalyzeOptions
+): Promise<AnalysisResult> {
+  const commit = options?.commit;
+  const diffs = commit
+    ? await getDiffForCommit(commit, repoPath)
+    : await getDiff(repoPath);
   const changedFiles = diffs.map((d) => d.file);
-  const changedFunctions = await findChangedFunctions(repoPath);
+  const changedFunctions = await findChangedFunctions(repoPath, diffs);
 
-  const { getLastCommitMessage } = await import("@commitguard/git");
-  const commitMessage = await getLastCommitMessage(repoPath);
+  const commitMessage = commit
+    ? await getCommitMessage(commit, repoPath)
+    : await getLastCommitMessage(repoPath);
   const risks = detectRisk(changedFunctions, commitMessage);
 
   return {
@@ -95,5 +111,6 @@ export async function analyzeCommit(repoPath?: string): Promise<AnalysisResult> 
     changedFunctions,
     risks,
     commitMessage: commitMessage || undefined,
+    commitHash: commit,
   };
 }

@@ -51,7 +51,7 @@ export class AIService {
         .filter((f) => f.function.name !== "(anonymous)")
         .map(
           (f) =>
-            `  it("${f.function.name}", () => {\n    // TODO: Add tests for ${f.function.name}\n    expect(true).toBe(true);\n  });`
+            `  it("${f.function.name}", () => {\n    // TODO: happy path, null/undefined, empty, invalid input\n    expect(true).toBe(true);\n  });`
         );
       const content = getFrameworkTemplate(framework, describeName, blocks);
       contents.push(content);

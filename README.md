@@ -47,6 +47,7 @@ easytest check --commit HEAD
 easytest generate                    # 변경된 함수만
 easytest generate --all              # 전체 함수
 easytest generate --run              # 생성 후 테스트 실행
+easytest generate --yes              # 확인 프롬프트 건너뛰기 (CI/스크립트)
 easytest generate --commit HEAD --run
 ```
 
@@ -77,7 +78,8 @@ npx easytest generate  # 테스트 생성
 npx easytest generate --commit HEAD --run
 ```
 
-설정 가이드: [docs/CONFIG.md](./docs/CONFIG.md)
+설정 가이드: [docs/CONFIG.md](./docs/CONFIG.md)  
+AI 플러그인: [docs/AI_PLUGIN.md](./docs/AI_PLUGIN.md)
 
 Or use as library:
 

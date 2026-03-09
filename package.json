@@ -13,6 +13,7 @@
     "generate": "easytest generate",
     "generate:run": "easytest generate --run",
     "generate:all": "easytest generate --all",
+    "generate:yes": "easytest generate --yes",
     "test": "vitest run"
   },
   "dependencies": {

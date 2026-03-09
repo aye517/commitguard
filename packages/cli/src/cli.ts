@@ -33,6 +33,7 @@ program
   .option("-c, --commit <hash>", "Use specific commit (default: staged changes)")
   .option("-r, --run", "Run tests after generating")
   .option("-a, --all", "Generate for all functions (not just changed)")
+  .option("-y, --yes", "Skip confirmation prompt (for CI/scripts)")
   .action(generate);
 
 program

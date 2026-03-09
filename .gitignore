@@ -2,6 +2,7 @@ node_modules
 **/fixtures-ts-callgraph
 dist
 .next
+*.tsbuildinfo
 .turbo
 *.log
 .env

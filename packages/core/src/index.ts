@@ -9,13 +9,67 @@ import {
   type DiffResult,
   type DiffFile,
 } from "@commitguard/git";
-import { loadConfig } from "@commitguard/config";
+import { loadConfig, loadConfigFromProject } from "@commitguard/config";
 import {
   parseFile,
+  findFunctions,
   findFunctionsWithRanges,
   type FunctionInfo,
   type FunctionNode,
 } from "./ast.js";
+import {
+  buildCallGraph,
+  findImpactedFunctions,
+  scanSourceFiles,
+} from "./callgraph.js";
+import { buildTSCallGraph } from "./tsCallGraph.js";
+
+export { buildCallGraph, buildTSCallGraph, findImpactedFunctions, scanSourceFiles };
+
+/** Project function for init/scan */
+export interface ProjectFunction {
+  name: string;
+  file: string;
+  line: number;
+  type: FunctionInfo["type"];
+}
+
+/** Scan project and list all detected functions */
+export async function listProjectFunctions(
+  projectRoot?: string
+): Promise<ProjectFunction[]> {
+  const root = projectRoot ?? process.cwd();
+  const config = loadConfigFromProject(root);
+  const extensions = config.risk?.extensions ?? [".ts", ".tsx", ".js", ".jsx"];
+  const files = scanSourceFiles(root);
+  const result: ProjectFunction[] = [];
+
+  for (const file of files) {
+    const ext = file.slice(file.lastIndexOf("."));
+    if (!extensions.includes(ext)) continue;
+
+    const fullPath = join(root, file);
+    if (!existsSync(fullPath)) continue;
+
+    const content = readFileSync(fullPath, "utf-8");
+    const ast = parseFile(content);
+    if (!ast) continue;
+
+    const functions = findFunctions(ast);
+    for (const fn of functions) {
+      if (fn.name !== "(anonymous)") {
+        result.push({
+          name: fn.name,
+          file,
+          line: fn.line,
+          type: fn.type,
+        });
+      }
+    }
+  }
+
+  return result;
+}
 
 export interface ChangedFunction {
   file: string;
@@ -37,9 +91,15 @@ export interface RiskResult {
   details?: string[];
 }
 
+export type CallGraphEngine = "ast" | "ts";
+
 export interface AnalysisResult {
   changedFiles: string[];
   changedFunctions: ChangedFunction[];
+  /** Functions impacted by changes (callers + callees via call graph) */
+  impactedFunctions?: string[];
+  /** Call graph engine used */
+  callGraphEngine?: CallGraphEngine;
   risks: RiskResult[];
   commitMessage?: string;
   commitHash?: string;
@@ -48,6 +108,8 @@ export interface AnalysisResult {
 export interface AnalyzeOptions {
   /** Analyze specific commit (e.g. "HEAD", "abc123", "HEAD~1"). If omitted, uses staged changes. */
   commit?: string;
+  /** Call graph engine: "ast" (Babel) or "ts" (TypeScript Compiler API) */
+  engine?: CallGraphEngine;
 }
 
 /**
@@ -102,7 +164,7 @@ export async function findChangedFunctions(
   repoPath?: string,
   diffs?: DiffResult[]
 ): Promise<ChangedFunction[]> {
-  const config = loadConfig({ repoPath });
+  const config = loadConfigFromProject(repoPath);
   const diffList = diffs ?? (await getDiff(repoPath));
   const extensions = config.risk?.extensions ?? [".ts", ".tsx", ".js", ".jsx"];
 
@@ -178,6 +240,7 @@ export async function analyzeCommit(
   options?: AnalyzeOptions
 ): Promise<AnalysisResult> {
   const commit = options?.commit;
+  const root = repoPath ?? process.cwd();
   const diffs = commit
     ? await getDiffForCommit(commit, repoPath)
     : await getDiff(repoPath);
@@ -189,11 +252,37 @@ export async function analyzeCommit(
     : await getLastCommitMessage(repoPath);
   const risks = detectRisk(changedFunctions, commitMessage);
 
+  // Call graph: diff → changed → impacted
+  const engine = options?.engine ?? "ast";
+  const changedNames = [...new Set(changedFunctions.map((cf) => cf.function.name))];
+  const graph = engine === "ts" ? buildTSCallGraph(root) : buildCallGraph(root);
+
+  // Expand changed names for TS engine (graph may use ClassName.methodName)
+  const expandedNames = expandChangedNamesForGraph(changedNames, graph);
+  const impactedFunctions = findImpactedFunctions(graph, expandedNames);
+
   return {
     changedFiles,
     changedFunctions,
+    impactedFunctions,
+    callGraphEngine: engine,
     risks,
     commitMessage: commitMessage || undefined,
     commitHash: commit,
   };
+}
+
+function expandChangedNamesForGraph(
+  changedNames: string[],
+  graph: Map<string, Set<string>>
+): string[] {
+  const result = new Set(changedNames);
+  for (const name of changedNames) {
+    for (const key of graph.keys()) {
+      if (key === name || key.endsWith(`.${name}`)) {
+        result.add(key);
+      }
+    }
+  }
+  return [...result];
 }

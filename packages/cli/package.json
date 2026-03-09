@@ -2,6 +2,7 @@
   "name": "@commitguard/cli",
   "version": "0.1.0",
   "bin": {
+    "easytest": "./dist/cli.js",
     "commitguard": "./dist/cli.js"
   },
   "main": "./dist/index.js",

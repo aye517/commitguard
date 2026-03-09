@@ -7,14 +7,16 @@
 
 ## 1. 이 프로젝트는 뭔가요?
 
-**CommitGuard**는 Git 히스토리(또는 스테이징된 변경)를 분석하고, diff된 함수들에 대한 테스트 코드를 생성·삽입한 뒤 테스트를 실행하는 도구입니다.
+**CommitGuard**는 **테스트를 쉽게 시작하게 해주는 개발자 도구**입니다.
 
-- **커밋 또는 스테이징**된 변경 사항 분석
-- **어떤 함수들이 변경됐는지** 파악
-- **위험 요소** 감지 (변경된 함수가 너무 많음, 커밋 메시지가 짧음 등)
-- **변경된 함수에 대한 테스트 코드 생성** → 프로젝트에 삽입 → **테스트 실행**
+대부분의 테스트 도구는 "테스트 잘하는 사람"을 위한 도구입니다.  
+이 프로젝트는 **"테스트 안 하는 사람"**을 위한 도구입니다.
 
-다른 개발 프로젝트에 라이브러리로 설치해서, 해당 프로젝트의 Git 히스토리를 보고 diff된 함수들의 테스트를 자동으로 만들고 돌려볼 수 있습니다.
+- **무엇을 테스트해야 할지 모를 때** → 변경된 함수 + 영향받은 함수 추천
+- **테스트 파일 만들기 귀찮을 때** → 템플릿 자동 생성
+- **코드 변경 리스크를 보고 싶을 때** → 위험 수준 + 추천 테스트
+
+커밋/스테이징을 분석하고, diff된 함수에 대한 테스트를 자동으로 만들고 돌려볼 수 있습니다.
 
 ---
 
@@ -117,19 +119,43 @@ commitguard/           ← 하나의 Git 저장소
 
 ### 4.7 packages/cli (CLI 도구)
 
-- **역할**: 터미널에서 `commitguard` 명령 실행
+- **역할**: 터미널에서 `easytest` (또는 `commitguard`) 명령 실행
 - **명령어**:
-  - `analyze` — 분석 (스테이징 또는 `--commit` 지정)
-  - `generate` — 테스트 생성 및 삽입 (`--run`으로 테스트 실행까지)
+  - `init` — 프로젝트 스캔, 함수 목록 출력
+  - `check` — 변경된 코드 기준 추천 테스트 확인
+  - `generate` — 테스트 생성 (`--all` 전체 함수, `--run` 실행)
+  - `analyze` — (레거시) 상세 분석
 
 ---
 
 ## 5. 데이터 흐름
 
-### 5.1 analyze
+### 5.1 init (프로젝트 스캔)
 
 ```
-사용자: commitguard analyze [--commit HEAD]
+사용자: easytest init
+    ↓
+packages/core: listProjectFunctions(projectRoot)
+    ↓
+scanSourceFiles() → findFunctions() → 함수 목록
+    ↓
+콘솔에 파일별 함수 목록 출력
+```
+
+### 5.2 check (추천 테스트)
+
+```
+사용자: easytest check [--commit HEAD]
+    ↓
+packages/core: analyzeCommit() (analyze와 동일)
+    ↓
+변경 함수, 영향 함수, 리스크, 추천 테스트 파일 출력
+```
+
+### 5.3 analyze (레거시)
+
+```
+사용자: easytest analyze [--commit HEAD] (또는 commitguard analyze)
     ↓
 packages/cli (Commander)
     ↓
@@ -144,12 +170,12 @@ packages/core: detectRisk()
 결과를 CLI가 콘솔에 출력
 ```
 
-### 5.2 generate (테스트 생성 + 실행)
+### 5.4 generate (테스트 생성 + 실행)
 
 ```
-사용자: commitguard generate [--commit HEAD] [--run]
+사용자: easytest generate [--commit HEAD] [--run] [--all]
     ↓
-packages/core: analyzeCommit() → changedFunctions
+[--all] packages/core: listProjectFunctions() | [기본] analyzeCommit() → changedFunctions
     ↓
 packages/ai: generateTestFiles() → TestFile[]
     ↓
@@ -158,7 +184,7 @@ packages/ai: writeTestsToProject() → 프로젝트에 파일 쓰기
 [--run 시] packages/ai: runTests() → pnpm test 실행
 ```
 
-### 5.3 Diff 라인 → 변경 함수 매칭 (핵심 엔진)
+### 5.5 Diff 라인 → 변경 함수 매칭 (핵심 엔진)
 
 ```
 git diff
@@ -171,6 +197,31 @@ detectChangedFunctions() → diff 라인이 함수 범위에 포함되면 change
     ↓
 generateTests → run tests
 ```
+
+### 5.6 Call Graph 엔진 (ast | ts)
+
+- **ast** (기본): Babel 기반, 빠름
+- **ts**: TypeScript Compiler API, `service.calculatePrice()` → `PriceService.calculatePrice` 타입 해석
+
+```bash
+easytest check --engine ast
+easytest check --engine ts
+```
+
+### 5.7 Call Graph → 영향 함수 (Test Impact Analysis)
+
+```
+changed functions
+    ↓
+buildCallGraph(projectRoot) → caller → callees
+    ↓
+findImpactedFunctions(graph, changedNames) → callers + callees (transitive)
+    ↓
+impacted functions (실제 영향 범위)
+```
+
+- **checkout** → **calculatePrice** → **applyDiscount**  
+- `calculatePrice` 변경 시 impacted: checkout, calculatePrice, applyDiscount
 
 ---
 

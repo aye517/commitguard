@@ -8,9 +8,11 @@
     "dev": "turbo run dev",
     "lint": "turbo run lint",
     "clean": "turbo run clean",
-    "analyze": "commitguard analyze",
-    "generate": "commitguard generate",
-    "generate:run": "commitguard generate --run",
+    "init": "easytest init",
+    "check": "easytest check",
+    "generate": "easytest generate",
+    "generate:run": "easytest generate --run",
+    "generate:all": "easytest generate --all",
     "test": "vitest run"
   },
   "dependencies": {

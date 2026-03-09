@@ -6,6 +6,13 @@ export interface DiffResult {
   status: "added" | "modified" | "deleted";
 }
 
+/** Parsed diff with line numbers for each file */
+export interface DiffFile {
+  filePath: string;
+  addedLines: number[];
+  removedLines: number[];
+}
+
 export async function getGit(repoPath?: string): Promise<SimpleGit> {
   return simpleGit(repoPath ?? process.cwd());
 }
@@ -88,6 +95,52 @@ function parseDiffOutput(diff: string): DiffResult[] {
         status,
       });
     }
+  }
+
+  return results;
+}
+
+/**
+ * Parse diff content and extract added/removed line numbers per file.
+ * Uses @@ -oldStart,oldCount +newStart,newCount @@ and +/- prefix on lines.
+ */
+export function parseDiffLines(diffResults: DiffResult[]): DiffFile[] {
+  const results: DiffFile[] = [];
+
+  for (const dr of diffResults) {
+    const addedLines: number[] = [];
+    const removedLines: number[] = [];
+
+    const lines = dr.content.split("\n");
+    let newLineNum = 0;
+    let oldLineNum = 0;
+
+    for (let i = 0; i < lines.length; i++) {
+      const line = lines[i];
+      const hunkMatch = line.match(/^@@ -(\d+)(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/);
+      if (hunkMatch) {
+        oldLineNum = parseInt(hunkMatch[1], 10);
+        newLineNum = parseInt(hunkMatch[3], 10);
+        continue;
+      }
+
+      if (line.startsWith("+") && !line.startsWith("+++")) {
+        addedLines.push(newLineNum);
+        newLineNum++;
+      } else if (line.startsWith("-") && !line.startsWith("---")) {
+        removedLines.push(oldLineNum);
+        oldLineNum++;
+      } else if (line.startsWith(" ") || line === "") {
+        oldLineNum++;
+        newLineNum++;
+      }
+    }
+
+    results.push({
+      filePath: dr.file,
+      addedLines,
+      removedLines,
+    });
   }
 
   return results;

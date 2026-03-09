@@ -1,12 +1,34 @@
 import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
-import { getDiff, getDiffForCommit, getCommitMessage, getLastCommitMessage, type DiffResult } from "@commitguard/git";
+import {
+  getDiff,
+  getDiffForCommit,
+  getCommitMessage,
+  getLastCommitMessage,
+  parseDiffLines,
+  type DiffResult,
+  type DiffFile,
+} from "@commitguard/git";
 import { loadConfig } from "@commitguard/config";
-import { parseFile, findFunctions, type FunctionInfo } from "./ast.js";
+import {
+  parseFile,
+  findFunctionsWithRanges,
+  type FunctionInfo,
+  type FunctionNode,
+} from "./ast.js";
 
 export interface ChangedFunction {
   file: string;
   function: FunctionInfo;
+}
+
+/** Result of diff-aware detection (function with line range) */
+export interface DetectedChangedFunction {
+  name: string;
+  filePath: string;
+  startLine: number;
+  endLine: number;
+  type: FunctionNode["type"];
 }
 
 export interface RiskResult {
@@ -28,18 +50,70 @@ export interface AnalyzeOptions {
   commit?: string;
 }
 
+/**
+ * Match diff lines with function ranges.
+ * Returns unique list of functions that contain added/removed lines.
+ */
+export function detectChangedFunctions(
+  diffFiles: DiffFile[],
+  fileFunctions: Map<string, FunctionNode[]>
+): DetectedChangedFunction[] {
+  const results: DetectedChangedFunction[] = [];
+
+  for (const diffFile of diffFiles) {
+    if (diffFile.filePath.includes("node_modules")) continue;
+
+    const functions = fileFunctions.get(diffFile.filePath) ?? [];
+    const allDiffLines = [...diffFile.addedLines, ...diffFile.removedLines];
+
+    for (const line of allDiffLines) {
+      const match = functions.find(
+        (fn) => line >= fn.startLine && line <= fn.endLine
+      );
+      if (match) {
+        results.push({
+          name: match.name,
+          filePath: diffFile.filePath,
+          startLine: match.startLine,
+          endLine: match.endLine,
+          type: match.type,
+        });
+      }
+    }
+  }
+
+  return uniqueFunctions(results);
+}
+
+function uniqueFunctions(
+  list: DetectedChangedFunction[]
+): DetectedChangedFunction[] {
+  const map = new Map<string, DetectedChangedFunction>();
+  for (const fn of list) {
+    const key = `${fn.filePath}:${fn.name}:${fn.startLine}`;
+    if (!map.has(key)) {
+      map.set(key, fn);
+    }
+  }
+  return [...map.values()];
+}
+
 export async function findChangedFunctions(
   repoPath?: string,
   diffs?: DiffResult[]
 ): Promise<ChangedFunction[]> {
   const config = loadConfig({ repoPath });
   const diffList = diffs ?? (await getDiff(repoPath));
-  const changedFunctions: ChangedFunction[] = [];
   const extensions = config.risk?.extensions ?? [".ts", ".tsx", ".js", ".jsx"];
+
+  // Diff-aware: parse line numbers and match with function ranges
+  const diffFiles = parseDiffLines(diffList);
+  const fileFunctions = new Map<string, FunctionNode[]>();
 
   for (const diff of diffList) {
     const ext = diff.file.slice(diff.file.lastIndexOf("."));
     if (!extensions.includes(ext)) continue;
+    if (diff.file.includes("node_modules")) continue;
 
     const fullPath = repoPath ? join(repoPath, diff.file) : join(process.cwd(), diff.file);
     if (!existsSync(fullPath)) continue;
@@ -48,13 +122,22 @@ export async function findChangedFunctions(
     const ast = parseFile(content);
     if (!ast) continue;
 
-    const functions = findFunctions(ast);
-    for (const fn of functions) {
-      changedFunctions.push({ file: diff.file, function: fn });
-    }
+    const functions = findFunctionsWithRanges(ast);
+    fileFunctions.set(diff.file, functions);
   }
 
-  return changedFunctions;
+  const detected = detectChangedFunctions(diffFiles, fileFunctions);
+
+  // Map back to ChangedFunction format (with FunctionInfo)
+  return detected.map((d) => ({
+    file: d.filePath,
+    function: {
+      name: d.name,
+      line: d.startLine,
+      column: 0,
+      type: d.type,
+    } as FunctionInfo,
+  }));
 }
 
 export function detectRisk(

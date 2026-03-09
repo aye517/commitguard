@@ -158,6 +158,20 @@ packages/ai: writeTestsToProject() → 프로젝트에 파일 쓰기
 [--run 시] packages/ai: runTests() → pnpm test 실행
 ```
 
+### 5.3 Diff 라인 → 변경 함수 매칭 (핵심 엔진)
+
+```
+git diff
+    ↓
+parseDiffLines() → DiffFile[] (filePath, addedLines, removedLines)
+    ↓
+parseASTFunctions() → findFunctionsWithRanges() → FunctionNode[] (startLine, endLine)
+    ↓
+detectChangedFunctions() → diff 라인이 함수 범위에 포함되면 changed
+    ↓
+generateTests → run tests
+```
+
 ---
 
 ## 6. 주요 개념 정리

@@ -1,74 +1,107 @@
 # AI 플러그인 가이드
 
-EasyTest는 기본적으로 템플릿 기반 테스트를 생성합니다. **AI를 사용해 edge case를 자동 생성**하려면 `AIService`에 클라이언트를 연결하면 됩니다.
+EasyTest는 기본적으로 **소스 코드를 import하는 템플릿 기반 테스트**를 생성합니다. AI를 사용하면 **edge case까지 포함된 고품질 테스트**를 자동 생성할 수 있습니다.
 
-## AIClient 인터페이스
+## 빌트인 Claude 지원
+
+### 1. CLI에서 바로 사용
+
+```bash
+# API 키 설정
+export ANTHROPIC_API_KEY=sk-ant-...
+
+# AI로 테스트 생성
+npx easytest generate --ai
+
+# 전체 함수 대상 + AI + 실행
+npx easytest generate --all --ai --run
+```
+
+### 2. package.json에 설정 (항상 AI 사용)
+
+```json
+{
+  "commitguard": {
+    "ai": {
+      "provider": "claude",
+      "model": "claude-sonnet-4-20250514"
+    }
+  }
+}
+```
+
+### 3. 환경변수 오버라이드
+
+| 환경변수 | 설명 |
+|---------|------|
+| `ANTHROPIC_API_KEY` | Anthropic API 키 (필수) |
+| `COMMITGUARD_AI_PROVIDER` | 프로바이더 오버라이드 (`claude` \| `none`) |
+
+API 키가 없으면 자동으로 템플릿 모드로 폴백됩니다.
+
+## AI 설정 옵션
+
+`package.json`의 `commitguard.ai` 필드:
+
+| 옵션 | 기본값 | 설명 |
+|------|--------|------|
+| `provider` | `"none"` | AI 프로바이더 (`"claude"` \| `"none"`) |
+| `model` | `"claude-sonnet-4-20250514"` | 사용할 모델 |
+| `apiKeyEnv` | `"ANTHROPIC_API_KEY"` | API 키를 읽을 환경변수 이름 |
+
+## AIClient 인터페이스 (커스텀 프로바이더)
+
+빌트인 Claude 외에 다른 AI를 연결하려면 `AIClient` 인터페이스를 구현합니다:
 
 ```ts
-import type { ChangedFunction } from "@commitguard/core";
-import type { AnalysisResult } from "@commitguard/core";
+import type { AIClient, GenerateTestsContext } from "@commitguard/ai";
 
 export interface AIClient {
-  /** 함수 목록 → 테스트 코드 문자열 배열 (파일별) */
-  generateTests?(functions: ChangedFunction[]): Promise<string[]>;
-  /** 분석 결과 → 리스크 설명 텍스트 */
+  /** 파일별 함수 + 소스 코드 컨텍스트 → 테스트 코드 배열 */
+  generateTests(context: GenerateTestsContext): Promise<string[]>;
+  /** (선택) 분석 결과 → 리스크 설명 */
   analyzeRisk?(result: AnalysisResult): Promise<string>;
 }
 ```
 
-## OpenAI 예시
+`GenerateTestsContext`에는 파일별 함수 목록, 테스트 프레임워크, 프로젝트 경로가 포함되어 소스 코드를 읽을 수 있습니다.
+
+### 커스텀 클라이언트 예시
 
 ```ts
 import { AIService } from "@commitguard/ai";
-import OpenAI from "openai";
+import type { AIClient, GenerateTestsContext } from "@commitguard/ai";
 
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-
-const client: AIClient = {
-  async generateTests(functions) {
-    const byFile = new Map<string, ChangedFunction[]>();
-    for (const cf of functions) {
-      const list = byFile.get(cf.file) ?? [];
-      list.push(cf);
-      byFile.set(cf.file, list);
-    }
-
+const myClient: AIClient = {
+  async generateTests(context: GenerateTestsContext) {
     const results: string[] = [];
-    for (const [file, fns] of byFile) {
-      const names = fns.map((f) => f.function.name).join(", ");
-      const res = await openai.chat.completions.create({
-        model: "gpt-4o-mini",
-        messages: [
-          {
-            role: "user",
-            content: `Generate Vitest tests for these functions: ${names} in ${file}. Include happy path and edge cases (null, undefined, empty).`,
-          },
-        ],
-      });
-      const content = res.choices[0]?.message?.content ?? "";
-      results.push(content);
+    for (const [file, fns] of context.functionsByFile) {
+      // 원하는 AI API 호출
+      const testCode = await callMyAI(file, fns, context.framework);
+      results.push(testCode);
     }
     return results;
   },
 };
 
 const service = new AIService();
-service.setClient(client);
-// service.generateTests(changedFunctions) 호출 시 AI가 생성
+service.setClient(myClient);
+const tests = await service.generateTests(changedFunctions, "vitest", repoPath);
 ```
 
-## 사용 방법
+## 템플릿 모드 (AI 없이)
 
-1. `@commitguard/ai`의 `generateTestFiles`는 내부에서 `new AIService()`를 사용합니다.
-2. AI를 쓰려면 `generateTestFiles`를 직접 호출하지 말고, `AIService` 인스턴스를 만들어 `setClient()` 후 `generateTests()`를 호출하세요.
-3. 또는 `@commitguard/ai` 패키지에 `EASYTEST_AI=openai` 같은 환경 변수로 플러그인을 로드하는 확장 포인트를 추가할 수 있습니다 (향후).
-
-## Edge Case 힌트 (기본 템플릿)
-
-AI 없이도 생성되는 템플릿에는 다음 TODO가 포함됩니다:
+AI 없이도 생성되는 템플릿은 소스 함수를 import하고 호출 스캐폴딩을 포함합니다:
 
 ```ts
-// TODO: happy path, null/undefined, empty, invalid input
-```
+import { describe, it, expect } from "vitest";
+import { calculatePrice, applyDiscount } from "./pricing";
 
-이를 참고해 수동으로 테스트를 보완할 수 있습니다.
+describe("pricing", () => {
+  it("calculatePrice should work correctly", () => {
+    // TODO: replace with actual arguments and expected value
+    const result = calculatePrice();
+    expect(result).toBeDefined();
+  });
+});
+```

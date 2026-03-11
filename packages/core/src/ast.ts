@@ -1,5 +1,5 @@
 import * as parser from "@babel/parser";
-import traverse, { type NodePath } from "@babel/traverse";
+import traverse, { type NodePath, type Node } from "@babel/traverse";
 import type {
   File,
   FunctionDeclaration,
@@ -21,6 +21,15 @@ export interface FunctionNode {
   startLine: number;
   endLine: number;
   type: "function" | "arrow" | "method";
+}
+
+/** Function with complexity score */
+export interface FunctionComplexity {
+  name: string;
+  startLine: number;
+  endLine: number;
+  type: FunctionNode["type"];
+  complexity: number;
 }
 
 export function parseFile(content: string, _filename?: string): File | null {
@@ -146,4 +155,91 @@ export function findFunctionsWithRanges(ast: File): FunctionNode[] {
   });
 
   return functions;
+}
+
+/**
+ * Count cyclomatic complexity branching nodes within a function body.
+ * Counts: if, for, for-in, for-of, while, do-while, switch case, catch,
+ *         conditional expression (?:), logical && and ||, nullish ??
+ */
+function countBranches(path: NodePath): number {
+  let count = 0;
+  path.traverse({
+    IfStatement() { count++; },
+    ForStatement() { count++; },
+    ForInStatement() { count++; },
+    ForOfStatement() { count++; },
+    WhileStatement() { count++; },
+    DoWhileStatement() { count++; },
+    SwitchCase() { count++; },
+    CatchClause() { count++; },
+    ConditionalExpression() { count++; },
+    LogicalExpression({ node }) {
+      if (node.operator === "&&" || node.operator === "||" || node.operator === "??") {
+        count++;
+      }
+    },
+  });
+  return count;
+}
+
+/**
+ * Analyze cyclomatic complexity for all functions in the AST.
+ * Complexity = 1 (base) + number of branching nodes.
+ */
+export function analyzeFunctionComplexity(ast: File): FunctionComplexity[] {
+  const results: FunctionComplexity[] = [];
+
+  const addResult = (
+    name: string,
+    startLine: number,
+    endLine: number,
+    type: FunctionNode["type"],
+    path: NodePath
+  ) => {
+    const complexity = 1 + countBranches(path);
+    results.push({ name, startLine, endLine, type, complexity });
+  };
+
+  traverse(ast, {
+    FunctionDeclaration(path: NodePath<FunctionDeclaration>) {
+      const node = path.node;
+      const name = (node.id?.name ?? "(anonymous)") as string;
+      const start = node.loc?.start.line ?? 0;
+      const end = node.loc?.end?.line ?? start;
+      addResult(name, start, end, "function", path);
+    },
+    FunctionExpression(path: NodePath<FunctionExpression>) {
+      const node = path.node;
+      const parent = path.parent;
+      const name =
+        parent?.type === "VariableDeclarator" && parent.id.type === "Identifier"
+          ? parent.id.name
+          : "(anonymous)";
+      const start = node.loc?.start.line ?? 0;
+      const end = node.loc?.end?.line ?? start;
+      addResult(name, start, end, "function", path);
+    },
+    ArrowFunctionExpression(path: NodePath<ArrowFunctionExpression>) {
+      const node = path.node;
+      const parent = path.parent;
+      const name =
+        parent?.type === "VariableDeclarator" && parent.id.type === "Identifier"
+          ? parent.id.name
+          : "(anonymous)";
+      const start = node.loc?.start.line ?? 0;
+      const end = node.loc?.end?.line ?? start;
+      addResult(name, start, end, "arrow", path);
+    },
+    ClassMethod(path: NodePath<ClassMethod>) {
+      const node = path.node;
+      const name =
+        node.key.type === "Identifier" ? node.key.name : "(anonymous)";
+      const start = node.loc?.start.line ?? 0;
+      const end = node.loc?.end?.line ?? start;
+      addResult(name, start, end, "method", path);
+    },
+  });
+
+  return results;
 }

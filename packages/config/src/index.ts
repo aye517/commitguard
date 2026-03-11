@@ -1,4 +1,5 @@
 export type TestFramework = "vitest" | "jest" | "mocha";
+export type AIProvider = "claude" | "none";
 
 import { readFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
@@ -22,6 +23,15 @@ export interface CommitGuardConfig {
     /** Test file suffix (e.g. ".test" for foo.test.ts) */
     suffix?: string;
   };
+  /** AI integration settings */
+  ai?: {
+    /** AI provider: "claude" or "none" (default: "none") */
+    provider?: AIProvider;
+    /** Model name (default: "claude-sonnet-4-20250514") */
+    model?: string;
+    /** Environment variable name for API key (default: "ANTHROPIC_API_KEY") */
+    apiKeyEnv?: string;
+  };
 }
 
 const DEFAULT_CONFIG: CommitGuardConfig = {
@@ -33,6 +43,11 @@ const DEFAULT_CONFIG: CommitGuardConfig = {
     framework: "vitest",
     outputDir: "",
     suffix: ".test",
+  },
+  ai: {
+    provider: "none",
+    model: "claude-sonnet-4-20250514",
+    apiKeyEnv: "ANTHROPIC_API_KEY",
   },
 };
 
@@ -47,6 +62,10 @@ export function loadConfig(overrides?: Partial<CommitGuardConfig>): CommitGuardC
     test: {
       ...DEFAULT_CONFIG.test,
       ...overrides?.test,
+    },
+    ai: {
+      ...DEFAULT_CONFIG.ai,
+      ...overrides?.ai,
     },
   };
 }

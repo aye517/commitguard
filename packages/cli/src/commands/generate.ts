@@ -28,12 +28,14 @@ export async function generate(options: {
   run?: boolean;
   all?: boolean;
   yes?: boolean;
+  ai?: boolean;
 }): Promise<void> {
   const repoPath = options.path ?? process.cwd();
   const commit = options.commit;
   const run = options.run ?? false;
   const all = options.all ?? false;
   const yes = options.yes ?? false;
+  const useAI = options.ai ?? false;
 
   try {
     let changedFunctions: ChangedFunction[];
@@ -79,8 +81,9 @@ export async function generate(options: {
       }
     }
 
-    console.log(`\n📝 Generating tests...\n`);
-    const testFiles = await generateTestFiles(changedFunctions, repoPath);
+    const modeLabel = useAI ? "🤖 Generating tests with AI..." : "📝 Generating tests...";
+    console.log(`\n${modeLabel}\n`);
+    const testFiles = await generateTestFiles(changedFunctions, repoPath, { useAI });
     const written = writeTestsToProject(testFiles, repoPath);
 
     console.log("Created:");

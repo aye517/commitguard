@@ -1,8 +1,8 @@
 import { describe, it, expect } from "vitest";
+import { analyze } from "./analyze.js";
 
 describe("analyze", () => {
-  it("analyze", () => {
-    // TODO: Add tests for analyze
-    expect(true).toBe(true);
+  it("is a function", () => {
+    expect(typeof analyze).toBe("function");
   });
 });

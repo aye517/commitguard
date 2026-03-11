@@ -14,8 +14,10 @@ import {
   parseFile,
   findFunctions,
   findFunctionsWithRanges,
+  analyzeFunctionComplexity,
   type FunctionInfo,
   type FunctionNode,
+  type FunctionComplexity,
 } from "./ast.js";
 import {
   buildCallGraph,
@@ -25,6 +27,7 @@ import {
 import { buildTSCallGraph } from "./tsCallGraph.js";
 
 export { buildCallGraph, buildTSCallGraph, findImpactedFunctions, scanSourceFiles };
+export { analyzeFunctionComplexity, type FunctionComplexity };
 
 /** Project function for init/scan */
 export interface ProjectFunction {
@@ -202,10 +205,22 @@ export async function findChangedFunctions(
   }));
 }
 
+export interface DetectRiskOptions {
+  commitMessage?: string;
+  /** Complexity data for changed functions (from analyzeFunctionComplexity) */
+  complexities?: FunctionComplexity[];
+}
+
 export function detectRisk(
   changedFunctions: ChangedFunction[],
-  commitMessage?: string
+  commitMessageOrOptions?: string | DetectRiskOptions
 ): RiskResult[] {
+  const opts: DetectRiskOptions =
+    typeof commitMessageOrOptions === "string"
+      ? { commitMessage: commitMessageOrOptions }
+      : commitMessageOrOptions ?? {};
+
+  const { commitMessage, complexities } = opts;
   const risks: RiskResult[] = [];
   const config = loadConfig();
   const threshold = config.risk?.complexityThreshold ?? 10;
@@ -232,6 +247,20 @@ export function detectRisk(
     });
   }
 
+  // Cyclomatic complexity risk
+  if (complexities) {
+    const highComplexity = complexities.filter((c) => c.complexity >= threshold);
+    if (highComplexity.length > 0) {
+      risks.push({
+        level: "high",
+        message: `High complexity functions detected (threshold: ${threshold})`,
+        details: highComplexity.map(
+          (c) => `${c.name} (complexity: ${c.complexity})`
+        ),
+      });
+    }
+  }
+
   return risks;
 }
 
@@ -250,7 +279,35 @@ export async function analyzeCommit(
   const commitMessage = commit
     ? await getCommitMessage(commit, repoPath)
     : await getLastCommitMessage(repoPath);
-  const risks = detectRisk(changedFunctions, commitMessage);
+
+  // Compute complexity for changed functions
+  const allComplexities: FunctionComplexity[] = [];
+  const changedFileSet = new Set(changedFunctions.map((cf) => cf.file));
+  for (const diff of diffs) {
+    if (!changedFileSet.has(diff.file)) continue;
+    const fullPath = join(root, diff.file);
+    if (!existsSync(fullPath)) continue;
+    const content = readFileSync(fullPath, "utf-8");
+    const ast = parseFile(content);
+    if (!ast) continue;
+    const fileComplexities = analyzeFunctionComplexity(ast);
+    // Filter to only changed function names in this file
+    const changedNames = new Set(
+      changedFunctions
+        .filter((cf) => cf.file === diff.file)
+        .map((cf) => cf.function.name)
+    );
+    for (const fc of fileComplexities) {
+      if (changedNames.has(fc.name)) {
+        allComplexities.push(fc);
+      }
+    }
+  }
+
+  const risks = detectRisk(changedFunctions, {
+    commitMessage: commitMessage || undefined,
+    complexities: allComplexities,
+  });
 
   // Call graph: diff → changed → impacted
   const engine = options?.engine ?? "ast";

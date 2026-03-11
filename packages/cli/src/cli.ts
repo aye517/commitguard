@@ -34,6 +34,7 @@ program
   .option("-r, --run", "Run tests after generating")
   .option("-a, --all", "Generate for all functions (not just changed)")
   .option("-y, --yes", "Skip confirmation prompt (for CI/scripts)")
+  .option("--ai", "Use AI (Claude) for intelligent test generation")
   .action(generate);
 
 program

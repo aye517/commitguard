@@ -1,43 +1,76 @@
 import { describe, it, expect } from "vitest";
+import { parseDiffLines } from "./index.js";
+import type { DiffResult } from "./index.js";
 
-describe("index", () => {
-  it("getGit", () => {
-    // TODO: Add tests for getGit
-    expect(true).toBe(true);
+describe("parseDiffLines (via index export)", () => {
+  it("parses added lines from diff content", () => {
+    const diffs: DiffResult[] = [
+      {
+        file: "src/math.ts",
+        content: `@@ -1,3 +1,5 @@
+ const a = 1;
++const b = 2;
++const c = 3;
+ const d = 4;`,
+        status: "modified",
+      },
+    ];
+    const result = parseDiffLines(diffs);
+    expect(result).toHaveLength(1);
+    expect(result[0].filePath).toBe("src/math.ts");
+    expect(result[0].addedLines).toContain(2);
+    expect(result[0].addedLines).toContain(3);
   });
 
-  it("getStagedFiles", () => {
-    // TODO: Add tests for getStagedFiles
-    expect(true).toBe(true);
+  it("parses removed lines from diff content", () => {
+    const diffs: DiffResult[] = [
+      {
+        file: "src/math.ts",
+        content: `@@ -1,5 +1,3 @@
+ const a = 1;
+-const b = 2;
+-const c = 3;
+ const d = 4;`,
+        status: "modified",
+      },
+    ];
+    const result = parseDiffLines(diffs);
+    expect(result[0].removedLines).toContain(2);
+    expect(result[0].removedLines).toContain(3);
   });
 
-  it("getUnstagedFiles", () => {
-    // TODO: Add tests for getUnstagedFiles
-    expect(true).toBe(true);
+  it("returns empty arrays for unchanged files", () => {
+    const diffs: DiffResult[] = [
+      {
+        file: "src/math.ts",
+        content: `@@ -1,3 +1,3 @@
+ const a = 1;
+ const b = 2;
+ const c = 3;`,
+        status: "modified",
+      },
+    ];
+    const result = parseDiffLines(diffs);
+    expect(result[0].addedLines).toEqual([]);
+    expect(result[0].removedLines).toEqual([]);
   });
 
-  it("getDiff", () => {
-    // TODO: Add tests for getDiff
-    expect(true).toBe(true);
-  });
-
-  it("getDiffForCommit", () => {
-    // TODO: Add tests for getDiffForCommit
-    expect(true).toBe(true);
-  });
-
-  it("getLastCommitMessage", () => {
-    // TODO: Add tests for getLastCommitMessage
-    expect(true).toBe(true);
-  });
-
-  it("getCommitMessage", () => {
-    // TODO: Add tests for getCommitMessage
-    expect(true).toBe(true);
-  });
-
-  it("parseDiffOutput", () => {
-    // TODO: Add tests for parseDiffOutput
-    expect(true).toBe(true);
+  it("handles multiple hunks", () => {
+    const diffs: DiffResult[] = [
+      {
+        file: "src/math.ts",
+        content: `@@ -1,3 +1,4 @@
+ const a = 1;
++const b = 2;
+ const c = 3;
+@@ -10,3 +11,4 @@
+ const x = 10;
++const y = 20;
+ const z = 30;`,
+        status: "modified",
+      },
+    ];
+    const result = parseDiffLines(diffs);
+    expect(result[0].addedLines.length).toBe(2);
   });
 });

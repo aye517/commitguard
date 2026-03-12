@@ -15,6 +15,9 @@ npx easytest generate --ai
 
 # 전체 함수 대상 + AI + 실행
 npx easytest generate --all --ai --run
+
+# 경로를 좁혀서 AI 테스트 생성 (함수 20개 초과 시 --filter 필수)
+npx easytest generate --all --ai --filter src/utils
 ```
 
 ### 2. package.json에 설정 (항상 AI 사용)

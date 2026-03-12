@@ -127,7 +127,8 @@ npx easytest generate --run
 | `npx easytest init` | 프로젝트 함수 목록 확인 |
 | `npx easytest check` | 마지막 커밋에서 뭐가 바뀌었는지 확인 |
 | `npx easytest generate` | 변경된 함수에 대한 테스트 생성 |
-| `npx easytest generate --all` | 전체 함수에 대한 테스트 생성 |
+| `npx easytest generate --all` | 전체 함수에 대한 테스트 생성 (20개 이하일 때) |
+| `npx easytest generate --all --filter src/utils` | 경로를 좁혀서 전체 테스트 생성 |
 | `npx easytest generate --run` | 테스트 생성 + 실행 |
 | `npx easytest generate --ai` | AI로 더 좋은 테스트 생성 |
 
@@ -251,6 +252,54 @@ Run 'easytest generate' to create or update tests.
 ```
 
 안내대로 설치하면 됩니다.
+
+---
+
+## 함수가 많은 프로젝트에서 사용하기
+
+`--all`로 전체 테스트를 생성할 때, 함수가 **20개를 초과**하면 `--filter`로 경로를 지정해야 합니다.
+
+```bash
+# 함수가 20개 이하면 그냥 실행됨
+npx easytest generate --all
+
+# 함수가 20개 초과 → 경로 필터 필요
+npx easytest generate --all --filter src/utils
+npx easytest generate --all --filter src/services
+```
+
+이렇게 하면 대규모 프로젝트에서도 범위를 좁혀서 단계적으로 테스트를 도입할 수 있습니다.
+
+---
+
+## 웹 대시보드로 사용하기
+
+CLI 대신 **웹 대시보드**에서 버튼으로 테스트를 생성할 수도 있습니다.
+
+```bash
+cd apps/web
+pnpm dev
+```
+
+`http://localhost:3000`에서 대시보드가 열립니다.
+
+### 대시보드 탭
+
+| 탭 | 설명 |
+|----|------|
+| **Check** | 마지막 커밋의 변경 함수 + 리스크 확인 |
+| **Init (스캔)** | 프로젝트 전체 함수 목록 확인 |
+| **Generate** | 경로 필터 → 함수 스캔 → 체크박스 선택 → 테스트 생성 |
+
+### Generate 탭 사용법
+
+1. 경로 필터에 `src/utils` 같은 경로를 입력 (선택)
+2. **함수 스캔** 버튼 클릭
+3. 디렉토리별로 함수 목록이 나타남
+4. 체크박스로 원하는 함수만 선택
+5. **테스트 생성** 버튼 클릭
+
+CLI의 `--all --filter` 같은 제한 없이, UI에서 직접 원하는 함수만 골라서 테스트를 생성할 수 있습니다.
 
 ---
 

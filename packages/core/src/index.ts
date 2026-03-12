@@ -39,7 +39,8 @@ export interface ProjectFunction {
 
 /** Scan project and list all detected functions */
 export async function listProjectFunctions(
-  projectRoot?: string
+  projectRoot?: string,
+  filterPath?: string
 ): Promise<ProjectFunction[]> {
   const root = projectRoot ?? process.cwd();
   const config = loadConfigFromProject(root);
@@ -48,6 +49,7 @@ export async function listProjectFunctions(
   const result: ProjectFunction[] = [];
 
   for (const file of files) {
+    if (filterPath && !file.startsWith(filterPath)) continue;
     const ext = file.slice(file.lastIndexOf("."));
     if (!extensions.includes(ext)) continue;
 

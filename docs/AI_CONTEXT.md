@@ -37,13 +37,16 @@ Then they run:
 ```bash
 npx easytest init
 npx easytest generate
+npx easytest generate --all --filter src/utils
 npx easytest check
 ```
+
+Or use the **web dashboard** (`apps/web`) with a visual Generate tab — scan by path, select functions with checkboxes, and generate tests with a button click.
 
 The tool will:
 
 1. **init**: scan project, detect functions
-2. **generate**: create simple test templates (optionally with AI edge cases)
+2. **generate**: create simple test templates (optionally with AI edge cases). When using `--all`, path filter (`--filter`) is required if there are more than 20 functions
 3. **check**: when code changes, recommend which tests to run, show risk
 
 The focus is **developer experience** and **low friction**, not complex features.
@@ -88,7 +91,9 @@ Our tool only helps **generate, recommend, and bootstrap** — so beginners can 
 
 1. **Core** — AST, call graph, diff analyzer (already built)
 2. **Test Engine** — test generator, edge case finder (AI optional)
-3. **CLI** — easytest init, generate, check
+3. **CLI** — easytest init, generate, check (with `--all`, `--filter`, `--ai`)
+4. **Web Dashboard** — Check, Init, Generate tabs (apps/web)
+5. **Dashboard Package** — embeddable middleware (packages/dashboard)
 
 Use existing engines:
 - Diff → changed functions → call graph → impacted functions → test recommendation

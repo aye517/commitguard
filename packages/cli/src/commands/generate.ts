@@ -22,6 +22,8 @@ function askConfirm(question: string): Promise<boolean> {
   });
 }
 
+const MAX_ALL_WITHOUT_FILTER = 20;
+
 export async function generate(options: {
   path?: string;
   commit?: string;
@@ -29,6 +31,7 @@ export async function generate(options: {
   all?: boolean;
   yes?: boolean;
   ai?: boolean;
+  filter?: string;
 }): Promise<void> {
   const repoPath = options.path ?? process.cwd();
   const commit = options.commit;
@@ -36,18 +39,27 @@ export async function generate(options: {
   const all = options.all ?? false;
   const yes = options.yes ?? false;
   const useAI = options.ai ?? false;
+  const filterPath = options.filter;
 
   try {
     let changedFunctions: ChangedFunction[];
 
     if (all) {
-      const projectFunctions = await listProjectFunctions(repoPath);
+      const projectFunctions = await listProjectFunctions(repoPath, filterPath);
       changedFunctions = projectFunctions.map((pf) => ({
         file: pf.file,
         function: { name: pf.name, line: pf.line, column: 0, type: pf.type },
       }));
       if (changedFunctions.length === 0) {
         console.log("\n⚠️ No functions found in project.\n");
+        return;
+      }
+      if (changedFunctions.length > MAX_ALL_WITHOUT_FILTER && !filterPath) {
+        console.log(
+          `\n⚠️ Too many functions detected (${changedFunctions.length}).` +
+          `\n   Use --filter <path> to narrow scope when using --all.` +
+          `\n   Example: easytest generate --all --filter src/utils\n`
+        );
         return;
       }
       console.log(`\n📦 Found ${changedFunctions.length} functions.\n`);

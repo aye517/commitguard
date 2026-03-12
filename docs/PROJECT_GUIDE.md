@@ -33,7 +33,8 @@ commitguard/           ← 하나의 Git 저장소
 │   ├── ai             ← AI 테스트 생성 + 파일 쓰기 + 테스트 실행
 │   ├── git            ← Git 유틸리티
 │   ├── cli            ← 터미널 CLI 도구
-│   └── config         ← 설정 로더
+│   ├── config         ← 설정 로더
+│   └── dashboard      ← 임베디드 대시보드 (미들웨어)
 ```
 
 **왜 모노레포?**
@@ -71,9 +72,13 @@ commitguard/           ← 하나의 Git 저장소
 
 ### 4.2 apps/web (Next.js 대시보드)
 
-- **역할**: 웹 UI로 분석 결과를 보여주는 대시보드
+- **역할**: 웹 UI로 분석 결과 확인 + 테스트 생성
 - **구조**: Next.js App Router (`src/app/`)
-- **현재 상태**: 기본 레이아웃과 홈 페이지만 구현됨 (추가 개발 예정)
+- **탭**: Check (변경 분석), Init (함수 스캔), Generate (경로 필터 → 함수 선택 → 테스트 생성)
+- **API 라우트**:
+  - `GET /api/analyze` — 커밋 분석
+  - `GET /api/init?filter=` — 함수 스캔 (경로 필터 지원)
+  - `POST /api/generate` — 선택한 함수에 대한 테스트 생성
 
 ### 4.3 packages/config (설정 로더)
 
@@ -99,6 +104,7 @@ commitguard/           ← 하나의 Git 저장소
 | 함수 | 설명 |
 |------|------|
 | `analyzeCommit(repoPath?, options?)` | 커밋 전체 분석. `options.commit`으로 특정 커밋 지정 가능 |
+| `listProjectFunctions(repoPath?, filterPath?)` | 프로젝트 전체 함수 스캔. `filterPath`로 경로 필터링 가능 |
 | `findChangedFunctions(repoPath?, diffs?)` | diff에서 변경된 파일을 파싱해, 그 안의 함수 목록 추출 |
 | `detectRisk(changedFunctions, commitMessage?)` | 변경된 함수/메시지를 보고 위험 수준 판단 |
 
@@ -123,8 +129,18 @@ commitguard/           ← 하나의 Git 저장소
 - **명령어**:
   - `init` — 프로젝트 스캔, 함수 목록 출력
   - `check` — 변경된 코드 기준 추천 테스트 확인
-  - `generate` — 테스트 생성 (`--all` 전체 함수, `--run` 실행)
+  - `generate` — 테스트 생성 (`--all` 전체 함수, `--filter` 경로 필터, `--run` 실행)
   - `analyze` — (레거시) 상세 분석
+- **제한**: `--all` 사용 시 함수가 20개 초과이면 `--filter` 지정 필수
+
+### 4.8 packages/dashboard (임베디드 대시보드)
+
+- **역할**: 호스트 앱에 미들웨어로 주입되는 개발자 대시보드
+- **제공**:
+  - `createDashboardMiddleware()` — Express/Connect 호환 미들웨어
+  - `handleApiRequest()` — API 요청 핸들러
+  - `renderDashboardHtml()` — SPA HTML 생성
+- **경로**: `/__commit-guard-lab/*`
 
 ---
 
@@ -173,9 +189,12 @@ packages/core: detectRisk()
 ### 5.4 generate (테스트 생성 + 실행)
 
 ```
-사용자: easytest generate [--commit HEAD] [--run] [--all]
+사용자: easytest generate [--commit HEAD] [--run] [--all] [--filter src/utils]
     ↓
-[--all] packages/core: listProjectFunctions() | [기본] analyzeCommit() → changedFunctions
+[--all] packages/core: listProjectFunctions(repoPath, filterPath)
+    ↓  함수 20개 초과 + --filter 없음 → 에러 메시지 출력, 종료
+    ↓  함수 20개 이하 또는 --filter 지정 → 계속
+[기본] analyzeCommit() → changedFunctions
     ↓
 packages/ai: generateTestFiles() → TestFile[]
     ↓
@@ -184,7 +203,21 @@ packages/ai: writeTestsToProject() → 프로젝트에 파일 쓰기
 [--run 시] packages/ai: runTests() → pnpm test 실행
 ```
 
-### 5.5 Diff 라인 → 변경 함수 매칭 (핵심 엔진)
+### 5.5 웹 대시보드 Generate 탭
+
+```
+사용자: 대시보드 Generate 탭 → 경로 필터 입력 → 함수 스캔
+    ↓
+GET /api/init?filter=src/utils → listProjectFunctions(repoPath, filterPath)
+    ↓
+사용자: 체크박스로 함수 선택
+    ↓
+POST /api/generate { functions: [...] }
+    ↓
+generateTestFiles() → writeTestsToProject() → 생성된 파일 목록 반환
+```
+
+### 5.6 Diff 라인 → 변경 함수 매칭 (핵심 엔진)
 
 ```
 git diff
@@ -198,7 +231,7 @@ detectChangedFunctions() → diff 라인이 함수 범위에 포함되면 change
 generateTests → run tests
 ```
 
-### 5.6 Call Graph 엔진 (ast | ts)
+### 5.7 Call Graph 엔진 (ast | ts)
 
 - **ast** (기본): Babel 기반, 빠름
 - **ts**: TypeScript Compiler API, `service.calculatePrice()` → `PriceService.calculatePrice` 타입 해석
@@ -208,7 +241,7 @@ easytest check --engine ast
 easytest check --engine ts
 ```
 
-### 5.7 Call Graph → 영향 함수 (Test Impact Analysis)
+### 5.8 Call Graph → 영향 함수 (Test Impact Analysis)
 
 ```
 changed functions
@@ -339,6 +372,7 @@ const { success, output } = runTests("./my-project");
 | 변경된 함수 5개 초과 | medium |
 | 커밋 메시지 10자 미만 | low |
 | 익명 함수 존재 | low |
+| Cyclomatic complexity ≥ threshold (기본 10) | high |
 
 ---
 
@@ -346,6 +380,7 @@ const { success, output } = runTests("./my-project");
 
 - **CommitGuard**: Git 히스토리/스테이징 분석 → diff된 함수 파악 → 테스트 생성 → 프로젝트에 삽입 → 테스트 실행
 - **모노레포**: apps(웹) + packages(라이브러리)를 한 저장소에서 관리
-- **핵심 패키지**: `core`(분석), `git`(Git 연동), `ai`(테스트 생성/실행), `cli`(터미널 명령)
-- **CLI 명령**: `commitguard analyze`, `commitguard generate [--commit] [--run]`
+- **핵심 패키지**: `core`(분석), `git`(Git 연동), `ai`(테스트 생성/실행), `cli`(터미널 명령), `dashboard`(임베디드 대시보드)
+- **CLI 명령**: `easytest init`, `easytest check`, `easytest generate [--all] [--filter] [--run] [--ai]`
+- **웹 대시보드**: Check / Init / Generate 탭으로 CLI 없이 UI에서 테스트 생성 가능
 - **저장소**: https://github.com/aye517/commitguard
